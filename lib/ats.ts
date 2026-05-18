@@ -77,9 +77,10 @@ function scoreTitle(resume: StructuredResume, jd: JDFeatures) {
   if (!jd.title) {
     return { score: WEIGHTS.titleRelevance, max: WEIGHTS.titleRelevance, note: "no title in JD" };
   }
-  const target = jd.title.toLowerCase();
-  const titles = resume.experience.map((e) => e.title.toLowerCase());
-  const joinedExperience = titles.join(" | ");
+  const target = normalizeTitle(jd.title);
+  const joinedExperience = resume.experience
+    .map((e) => normalizeTitle(e.title))
+    .join(" | ");
   const tokens = target
     .split(/\s+/)
     .filter((t) => t.length > 2 && !/^(the|a|an|and|or|for|of|in|to|at|with)$/.test(t));
@@ -92,8 +93,24 @@ function scoreTitle(resume: StructuredResume, jd: JDFeatures) {
   return {
     score,
     max: WEIGHTS.titleRelevance,
-    note: `${hits}/${tokens.length} title tokens matched against your job titles`,
+    note: tokens.length
+      ? `${hits}/${tokens.length} title keywords matched against your job titles`
+      : "no specific title keywords to match",
   };
+}
+
+// Compare titles without punctuation noise: "Full-Stack" ↔ "Full Stack",
+// "Senior SWE" ↔ "Sr. Software Engineer" via alias hop, etc.
+function normalizeTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\bsr\.?\b/g, "senior")
+    .replace(/\bjr\.?\b/g, "junior")
+    .replace(/\bswe\b/g, "software engineer")
+    .replace(/\bsde\b/g, "software engineer")
+    .replace(/[-_/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function scoreYears(resume: StructuredResume, jd: JDFeatures) {
