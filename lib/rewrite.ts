@@ -1,6 +1,6 @@
 import type { StructuredResume, JDFeatures, ScoreBreakdown } from "./types";
 import { SKILL_CATEGORIES } from "./types";
-import { generateJSON } from "./gemini";
+import { generateJSON } from "./ai";
 import { scoreResume } from "./ats";
 
 type RewriteResult = {

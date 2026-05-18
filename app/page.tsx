@@ -83,7 +83,7 @@ export default function Page() {
         </h1>
         <p className="mt-4 max-w-2xl text-muted">
           Upload your current resume, paste the job description, and see the breakdown.
-          Click <em>Build resume</em> to get a tailored DOCX rewritten by Gemini — truthful, just sharper.
+          Click <em>Build resume</em> to get a tailored DOCX — truthful, just sharper.
         </p>
       </header>
 
@@ -160,7 +160,7 @@ export default function Page() {
       </div>
 
       <footer className="mt-12 text-xs text-muted">
-        Built with Next.js + Gemini. No data is stored — everything runs in this process.
+        Built with Next.js. No data is stored — every request processes in memory.
       </footer>
     </main>
   );

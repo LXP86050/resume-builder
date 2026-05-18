@@ -6,7 +6,7 @@ import { buildDocx } from "@/lib/docx";
 
 export const runtime = "nodejs";
 // Vercel hobby plan caps function duration at 60s.
-// The rewriter runs up to 3 Gemini passes (~10-20s each) — at most ~45-60s total.
+// The rewriter runs up to 3 AI passes (~10-20s each) — fits under 60s.
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
