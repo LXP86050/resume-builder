@@ -117,12 +117,13 @@ function scoreYears(resume: StructuredResume, jd: JDFeatures) {
 }
 
 function estimateYearsFromResume(resume: StructuredResume): number {
-  const range = /(\d{4})\s*[-–]\s*(present|current|\d{4})/gi;
   let totalMonths = 0;
   const now = new Date().getFullYear();
   for (const item of resume.experience) {
-    const matches = [...item.dates.matchAll(range)];
-    for (const m of matches) {
+    // Fresh regex per iteration to sidestep any global-flag lastIndex carryover.
+    // Accepts "2018-2021", "2022 - Mar 2024", "Mar 2024 - Present", etc.
+    const range = /(\d{4})\s*[-–]\s*(?:[a-z]+\.?\s+)?(present|current|\d{4})/gi;
+    for (const m of item.dates.matchAll(range)) {
       const start = parseInt(m[1], 10);
       const end = /present|current/i.test(m[2]) ? now : parseInt(m[2], 10);
       if (!isNaN(start) && !isNaN(end) && end >= start) {
