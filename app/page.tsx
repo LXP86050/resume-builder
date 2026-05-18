@@ -54,8 +54,17 @@ export default function Page() {
       fd.append("jd", jd);
       const res = await fetch("/api/build", { method: "POST", body: fd });
       if (!res.ok) {
-        const errBody = await res.json().catch(() => ({ error: "Build failed" }));
-        throw new Error(errBody.error || "Build failed");
+        // Body might be JSON ({error: "..."}) or an HTML platform error page.
+        // Read once, then try to parse — fall back to status+snippet.
+        const text = await res.text();
+        let message = `Build failed (HTTP ${res.status})`;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          if (text) message = `${message}: ${text.slice(0, 180).trim()}`;
+        }
+        throw new Error(message);
       }
       const finalScoreHeader = res.headers.get("X-Resume-Score");
       const finalBreakdown = res.headers.get("X-Resume-Score-Breakdown");
@@ -115,6 +124,9 @@ export default function Page() {
               {file ? <span className="font-medium">{file.name}</span> : "Drop a PDF, DOCX, or TXT — or click to choose"}
             </p>
           </div>
+          <p className="mt-2 text-xs text-muted">
+            Tip: upload your <strong>original</strong> resume each time. Each <em>Build resume</em> tailors output to the specific JD, so a previously-built DOCX won&apos;t generalize well to a new role.
+          </p>
 
           <label className="label mt-6">Job description</label>
           <textarea
