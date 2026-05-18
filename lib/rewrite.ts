@@ -1,4 +1,5 @@
 import type { StructuredResume, JDFeatures, ScoreBreakdown } from "./types";
+import { SKILL_CATEGORIES } from "./types";
 import { generateJSON } from "./gemini";
 import { scoreResume } from "./ats";
 
@@ -61,6 +62,8 @@ function buildPrompt(
     ? "Make a first careful pass: rewrite to weave the JD's terminology into the candidate's real experience."
     : `Previous attempt scored ${lastScore.total}%. Be more aggressive about surfacing JD keywords. Still no fabrication.`;
 
+  const categories = SKILL_CATEGORIES.join(", ");
+
   return [
     "You are an expert technical resume editor optimizing for ATS (Applicant Tracking System) screening.",
     "",
@@ -74,10 +77,19 @@ function buildPrompt(
     "   ONLY IF the candidate's original work actually included retrieval. If not, do not claim it.",
     "3. You MAY add JD-relevant skills to the Skills section ONLY if there is evidence in the candidate's experience",
     "   that they have used the skill (look at their bullets, summary, prior skills list).",
-    "4. You MAY rewrite the summary to target this specific JD.",
+    "4. You MAY rewrite the summary to target this specific JD. Keep it to 2–4 sentences, prose.",
     "5. Every bullet must start with a strong past-tense action verb.",
-    "6. Keep bullets concise (1–2 lines). Include metrics when they were already in the original.",
+    "6. Bullets should be 1–2 lines. Inline-bold the most impactful phrases and metrics by wrapping them in **double asterisks**, ",
+    "   e.g. 'Built **RAG-based AI solutions** using Azure OpenAI ... reducing analyst lookup time by **55%**.'",
+    "   Aim for 2–4 bolded phrases per bullet. Do NOT bold whole bullets.",
     "7. Preserve the candidate's contact info, name, education, and job dates EXACTLY.",
+    "",
+    "OUTPUT STRUCTURE — this resume MUST follow a fixed template:",
+    "- Sections in this order: SUMMARY, CORE SKILLS, EXPERIENCE, PROJECTS, EDUCATION.",
+    `- CORE SKILLS must use EXACTLY these 9 category labels, in this order: ${categories}.`,
+    "  • Include every category in the JSON. If a category has no truthful items, return an empty items array.",
+    "  • Move/rename items into the right category. Add JD-relevant items only when supported by the candidate's experience.",
+    "  • Aim to surface as many JD hard-skills here as the candidate truthfully has.",
     "",
     `GUIDANCE FOR THIS ATTEMPT: ${guidance}`,
     "",
@@ -116,13 +128,17 @@ function buildPrompt(
     "{",
     '  "name": string,',
     '  "contact": { "email"?: string, "phone"?: string, "location"?: string, "linkedin"?: string, "github"?: string, "website"?: string },',
-    '  "summary": string,',
-    '  "skills": string[],   // grouped/flat list — include canonical JD skill names where truthful',
+    '  "summary": string,                            // 2–4 sentence prose, JD-targeted',
+    '  "skills": [                                   // ALWAYS 9 entries in the order above',
+    '     { "label": string, "items": string[] }',
+    "  ],",
     '  "experience": [ { "title": string, "company": string, "dates": string, "location"?: string, "bullets": string[] } ],',
     '  "education": [ { "school": string, "degree": string, "dates"?: string } ],',
     '  "projects"?: [ { "name": string, "description"?: string, "bullets": string[] } ],',
     '  "certifications"?: string[]',
     "}",
+    "",
+    "Bullets in experience and projects may contain **bold** markers as described above.",
     "",
     "Return ONLY the JSON. No prose, no markdown fences, no commentary.",
   ].join("\n");
@@ -142,8 +158,11 @@ export function composeRawText(r: Partial<StructuredResume>): string {
   }
   if (r.skills?.length) {
     out.push("");
-    out.push("Skills");
-    out.push(r.skills.join(", "));
+    out.push("Core Skills");
+    for (const cat of r.skills) {
+      if (!cat.items?.length) continue;
+      out.push(`${cat.label}: ${cat.items.join(", ")}`);
+    }
   }
   if (r.experience?.length) {
     out.push("");

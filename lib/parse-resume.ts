@@ -1,12 +1,12 @@
-import type { StructuredResume, ExperienceItem, EducationItem } from "./types";
+import type { StructuredResume, ExperienceItem, EducationItem, SkillCategory } from "./types";
 
 const SECTION_PATTERNS: Array<{ key: string; regex: RegExp }> = [
-  { key: "summary", regex: /^(professional\s+)?(summary|profile|objective|about)\b/i },
-  { key: "skills", regex: /^(technical\s+)?(skills|technologies|core\s+competenc(ies|y)|tech\s+stack)\b/i },
-  { key: "experience", regex: /^(professional\s+)?(experience|employment|work\s+history|work\s+experience)\b/i },
-  { key: "projects", regex: /^projects?\b/i },
-  { key: "education", regex: /^education\b/i },
-  { key: "certifications", regex: /^(certifications?|licenses?|awards?)\b/i },
+  { key: "summary", regex: /^(professional\s+)?(summary|profile|objective|about)\s*:?\s*$/i },
+  { key: "skills", regex: /^(core\s+|technical\s+|key\s+)?(skills|technologies|competenc(ies|y)|tech\s+stack)\s*:?\s*$/i },
+  { key: "experience", regex: /^(professional\s+|work\s+)?(experience|employment|work\s+history)\s*:?\s*$/i },
+  { key: "projects", regex: /^projects?\s*:?\s*$/i },
+  { key: "education", regex: /^education\s*:?\s*$/i },
+  { key: "certifications", regex: /^(certifications?|licenses?|awards?)\s*:?\s*$/i },
 ];
 
 export async function extractTextFromUpload(file: File): Promise<string> {
@@ -52,7 +52,7 @@ export function parseResume(rawText: string): StructuredResume {
     name: extractName(sections.header),
     contact: extractContact(contactBlock),
     summary: sections.summary.length ? sections.summary.join(" ").trim() : undefined,
-    skills: parseSkillsList(sections.skills),
+    skills: parseSkillSections(sections.skills),
     experience: parseExperience(sections.experience),
     education: parseEducation(sections.education),
     projects: sections.projects.length
@@ -100,28 +100,49 @@ function extractName(header: string[]): string {
 
 function extractContact(block: string): StructuredResume["contact"] {
   const email = block.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0];
-  const phone = block.match(/(\+?\d[\d\s().-]{8,}\d)/)?.[0]?.replace(/\s+/g, " ").trim();
+  const phone = block
+    .match(/(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/)?.[0]
+    ?.replace(/\s+/g, " ")
+    .trim();
   const linkedin = block.match(/linkedin\.com\/[\w\-/]+/i)?.[0];
   const github = block.match(/github\.com\/[\w\-/]+/i)?.[0];
   const website = block.match(/https?:\/\/[^\s,]+/i)?.[0];
-  const location = block
-    .split("\n")
-    .map((s) => s.trim())
-    .find((s) => /\b[A-Z][a-z]+,\s*[A-Z]{2}\b/.test(s));
+  const location = block.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*,\s*[A-Z]{2}\b/)?.[0]?.replace(/\s*,\s*/, ", ");
   return { email, phone, linkedin, github, website, location };
 }
 
-function parseSkillsList(lines: string[]): string[] {
-  const all = lines
-    .join(" ")
-    .split(/[,;•·|•\n]/)
-    .map((s) => s.replace(/^[\s\-:]+|[\s\-:]+$/g, ""))
-    .map((s) => s.replace(/^[a-z]+:\s*/i, "")) // drop "Languages:" labels
-    .filter((s) => s.length > 1 && s.length < 60);
-  // De-dup case-insensitively, keep first casing.
+function parseSkillSections(lines: string[]): SkillCategory[] {
+  const out: SkillCategory[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    const colon = line.indexOf(":");
+    if (colon > 0 && colon < 40) {
+      const label = line.slice(0, colon).trim();
+      const items = splitSkillItems(line.slice(colon + 1));
+      if (items.length) out.push({ label, items });
+      continue;
+    }
+    // Continuation line — fold into the previous category, or open a generic one.
+    const items = splitSkillItems(line);
+    if (!items.length) continue;
+    if (out.length) out[out.length - 1].items.push(...items);
+    else out.push({ label: "Skills", items });
+  }
+  // Final per-category dedupe.
+  return out.map((c) => ({ label: c.label, items: dedupe(c.items) }));
+}
+
+function splitSkillItems(s: string): string[] {
+  return s
+    .split(/[,;•·|]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 1 && t.length < 60);
+}
+
+function dedupe(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const s of all) {
+  for (const s of items) {
     const k = s.toLowerCase();
     if (seen.has(k)) continue;
     seen.add(k);
@@ -167,12 +188,20 @@ function parseExperienceHeader(line: string): ExperienceItem {
     if (/\d{4}/.test(p) || /present|current/i.test(p)) dates = p;
     else if (/[A-Z][a-z]+,\s*[A-Z]{2}/.test(p)) location = p;
   }
-  // If no clear separator found, try to peel a trailing date range out of the title.
+  // PDF text often joins a right-aligned date range onto the company line.
+  // Peel a trailing month-year-range out of company (or title, as fallback).
+  const trailingDate = /\s+((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{4}\s*[-–—]\s*(?:present|current|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{4}|\d{4}))\s*$/i;
   if (!dates) {
-    const m = title.match(/(.*?)\s+((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{4}.*)/i);
-    if (m) {
-      title = m[1].trim();
-      dates = m[2].trim();
+    const mCompany = company.match(trailingDate);
+    if (mCompany) {
+      company = company.slice(0, mCompany.index).trim();
+      dates = mCompany[1].trim();
+    } else {
+      const mTitle = title.match(trailingDate);
+      if (mTitle) {
+        title = title.slice(0, mTitle.index).trim();
+        dates = mTitle[1].trim();
+      }
     }
   }
   return { title, company, dates, location, bullets: [] };
@@ -194,11 +223,39 @@ function parseEducation(lines: string[]): EducationItem[] {
 function parseProjects(lines: string[]): { name: string; description?: string; bullets: string[] }[] {
   const items: { name: string; description?: string; bullets: string[] }[] = [];
   let current: { name: string; description?: string; bullets: string[] } | null = null;
-  for (const line of lines) {
+
+  const BULLET_CHARS = /[•●○◦▪◾◆\-\*▸‣]/;
+  const startsWithBullet = (s: string) => new RegExp(`^${BULLET_CHARS.source}`).test(s);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
     if (!line) continue;
-    if (/^[•\-\*•]/.test(line)) {
+
+    if (startsWithBullet(line)) {
+      // A single PDF line may pack multiple bullets joined by mid-line markers.
+      const bullets = line
+        .split(new RegExp(BULLET_CHARS.source, "g"))
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (!current) current = { name: "", bullets: [] };
-      current.bullets.push(line.replace(/^[•\-\*•\s]+/, "").trim());
+      current.bullets.push(...bullets);
+      continue;
+    }
+
+    if (line.includes("|") && line.length < 240) {
+      if (current) items.push(current);
+      const [name, ...rest] = line.split("|");
+      current = {
+        name: name.trim(),
+        description: rest.length ? rest.join("|").trim() : undefined,
+        bullets: [],
+      };
+      continue;
+    }
+
+    // Continuation of the previous bullet (PDF text-wrapping).
+    if (current && current.bullets.length) {
+      current.bullets[current.bullets.length - 1] += " " + line;
     } else {
       if (current) items.push(current);
       current = { name: line, bullets: [] };

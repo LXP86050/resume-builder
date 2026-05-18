@@ -27,11 +27,30 @@ export type ProjectItem = {
   bullets: string[];
 };
 
+export type SkillCategory = {
+  label: string;
+  items: string[];
+};
+
+// The fixed 9 skill-category labels that the rendered resume always uses,
+// in this exact order. Drives both the rewrite prompt and the DOCX writer.
+export const SKILL_CATEGORIES = [
+  "Languages",
+  "Backend",
+  "Frontend",
+  "Databases & Search",
+  "Cloud & DevOps",
+  "AI & ML",
+  "Security & Integration",
+  "Engineering Areas",
+  "Tools & Testing",
+] as const;
+
 export type StructuredResume = {
   name: string;
   contact: Contact;
   summary?: string;
-  skills: string[];
+  skills: SkillCategory[];
   experience: ExperienceItem[];
   education: EducationItem[];
   projects?: ProjectItem[];
