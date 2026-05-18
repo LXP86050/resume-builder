@@ -10,17 +10,26 @@ type RewriteResult = {
 };
 
 const TARGET = 90;
-const MAX_ATTEMPTS = 3;
+// Default 2 passes — fits inside Vercel hobby's 60s function timeout
+// with one AI call taking ~15-25s. Override via env if you're on Pro
+// (300s budget) and want more iterations.
+const MAX_ATTEMPTS = clamp(parseInt(process.env.MAX_REWRITE_ATTEMPTS ?? "2", 10), 1, 5);
+// Stop starting new passes once we're within this many ms of the timeout —
+// a half-finished call returns a Vercel 504 instead of letting us return the
+// best result we have so far.
+const TIME_BUDGET_MS = parseInt(process.env.REWRITE_TIME_BUDGET_MS ?? "45000", 10);
 
 export async function rewriteToTarget(
   resume: StructuredResume,
   jd: JDFeatures,
 ): Promise<RewriteResult> {
+  const deadline = Date.now() + TIME_BUDGET_MS;
   let current = resume;
   let lastScore = scoreResume(current, jd);
   let attempts = 0;
 
   while (lastScore.total < TARGET && attempts < MAX_ATTEMPTS) {
+    if (Date.now() >= deadline) break;
     attempts++;
     const rewritten = await callRewrite(current, jd, lastScore, attempts);
     const merged: StructuredResume = {
@@ -37,6 +46,11 @@ export async function rewriteToTarget(
   }
 
   return { resume: current, score: lastScore, attempts };
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  if (Number.isNaN(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
 }
 
 async function callRewrite(
