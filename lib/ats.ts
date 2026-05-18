@@ -105,7 +105,7 @@ function scoreYears(resume: StructuredResume, jd: JDFeatures) {
     return {
       score: WEIGHTS.yearsOfExperience,
       max: WEIGHTS.yearsOfExperience,
-      note: `~${claimed}y experience ≥ ${jd.requiredYears}y required`,
+      note: `~${claimed}y experience >= ${jd.requiredYears}y required`,
     };
   }
   const ratio = Math.max(0, claimed / jd.requiredYears);

@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="resume_tailored.docx"`,
         "X-Resume-Score": String(score.total),
-        "X-Resume-Score-Breakdown": JSON.stringify(score),
+        // HTTP headers must be ASCII; escape any non-ASCII chars in the JSON.
+        "X-Resume-Score-Breakdown": JSON.stringify(score).replace(/[-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`),
       },
     });
   } catch (e) {
